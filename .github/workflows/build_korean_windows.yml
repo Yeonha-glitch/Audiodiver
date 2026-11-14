@@ -1,0 +1,66 @@
+name: Audiodiver Korean Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ko-build]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Alomare/Audiodiver
+          ref: v1.7.2
+          path: audiodiver
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: korean
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: audiodiver/app/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: audiodiver/app/src-tauri
+      - name: Apply Korean language patch
+        shell: bash
+        run: python korean/apply_ko.py audiodiver
+      - name: Prepare bundled Python core and audio tools
+        shell: bash
+        run: python audiodiver/app/scripts/release.py core
+      - name: Install frontend dependencies
+        working-directory: audiodiver/app
+        shell: bash
+        run: npm ci
+      - name: Extract and merge Lingui catalogs
+        working-directory: audiodiver/app
+        shell: bash
+        run: npm run extract
+      - name: Build unsigned Korean Windows installer
+        working-directory: audiodiver/app
+        shell: bash
+        run: npm run tauri -- build --config src-tauri/tauri.ko-build.conf.json
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Audiodiver_1.7.2_Korean_Installer_UNSIGNED
+          path: audiodiver/app/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
